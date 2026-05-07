@@ -1,0 +1,72 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: thesis-benchmark-backend
+    environment:
+      APP_NAME: "SQL vs NoSQL Benchmark API"
+      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000"
+      DATABASE_URL: "postgresql://benchmark:benchmark@postgres:5432/benchmark"
+      MONGO_URL: "mongodb://mongodb:27017/benchmark"
+      SAMPLE_DATASET_DIR: "/app/sample_datasets"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./sample_datasets:/app/sample_datasets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: thesis-benchmark-frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: thesis-benchmark-postgres
+    environment:
+      POSTGRES_DB: benchmark
+      POSTGRES_USER: benchmark
+      POSTGRES_PASSWORD: benchmark
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchmark -d benchmark"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    container_name: thesis-benchmark-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mongodb_data:
