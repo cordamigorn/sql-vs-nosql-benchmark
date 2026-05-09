@@ -292,45 +292,45 @@ Sistemin uçtan uca çalıştığını doğrulamak ve tez deneylerinde kullanıl
 
 ### Tasks
 
-- [ ] Docker Compose ile tüm sistemi çalıştır.
-- [ ] Backend API endpoint'lerini test et.
-- [ ] Frontend üzerinden dataset upload flow test et.
-- [ ] Sample dataset flow test et.
-- [ ] PostgreSQL data loading işlemini test et.
-- [ ] MongoDB data loading işlemini test et.
-- [ ] WRITE benchmark testleri çalıştır.
-- [ ] READ benchmark testleri çalıştır.
-- [ ] UPDATE benchmark testleri çalıştır.
-- [ ] DELETE benchmark testleri çalıştır.
-- [ ] Result cards ve comparison table çıktılarını kontrol et.
-- [ ] Chart çıktılarının doğru veriyi gösterdiğini kontrol et.
-- [ ] Previous results table çıktısını kontrol et.
-- [ ] Geçersiz CSV ve JSON dosyalarıyla hata senaryolarını test et.
-- [ ] PostgreSQL version bilgisini kaydet.
-- [ ] MongoDB version bilgisini kaydet.
-- [ ] Hardware specifications bilgisini kaydet.
-- [ ] Tez için final benchmark sonuçlarını topla.
-- [ ] Tez sonuç bölümü için tablo ve grafik verilerini hazırla.
+- [x] Docker Compose ile tüm sistemi çalıştır.
+- [x] Backend API endpoint'lerini test et.
+- [x] Frontend üzerinden dataset upload flow test et.
+- [x] Sample dataset flow test et.
+- [x] PostgreSQL data loading işlemini test et.
+- [x] MongoDB data loading işlemini test et.
+- [x] WRITE benchmark testleri çalıştır.
+- [x] READ benchmark testleri çalıştır.
+- [x] UPDATE benchmark testleri çalıştır.
+- [x] DELETE benchmark testleri çalıştır.
+- [x] Result cards ve comparison table çıktılarını kontrol et.
+- [x] Chart çıktılarının doğru veriyi gösterdiğini kontrol et.
+- [x] Previous results table çıktısını kontrol et.
+- [x] Geçersiz CSV ve JSON dosyalarıyla hata senaryolarını test et.
+- [x] PostgreSQL version bilgisini kaydet.
+- [x] MongoDB version bilgisini kaydet.
+- [x] Hardware specifications bilgisini kaydet.
+- [x] Tez için final benchmark sonuçlarını topla.
+- [x] Tez sonuç bölümü için tablo ve grafik verilerini hazırla.
 
 ### Deliverables
 
-- [ ] Test edilmiş lokal Docker uygulaması
-- [ ] Doğrulanmış benchmark flow
-- [ ] Database version bilgileri
-- [ ] Hardware specification notları
-- [ ] Tez deneyleri için benchmark sonuçları
-- [ ] Tez sonuç bölümünde kullanılabilecek tablo ve grafik verileri
+- [x] Test edilmiş lokal Docker uygulaması
+- [x] Doğrulanmış benchmark flow
+- [x] Database version bilgileri
+- [x] Hardware specification notları
+- [x] Tez deneyleri için benchmark sonuçları
+- [x] Tez sonuç bölümünde kullanılabilecek tablo ve grafik verileri
 
 ### Acceptance Criteria
 
-- [ ] Uygulama lokal Docker ortamında çalışır.
-- [ ] Kullanıcı komut satırı kullanmadan benchmark çalıştırabilir.
-- [ ] CSV dataset ile benchmark tamamlanır.
-- [ ] JSON dataset ile benchmark tamamlanır.
-- [ ] Sample dataset ile benchmark tamamlanır.
-- [ ] PostgreSQL ve MongoDB sonuçları aynı arayüzde karşılaştırılır.
-- [ ] Sonuçlar saklanır ve önceki sonuçlar görüntülenir.
-- [ ] Sistem geçersiz inputlarda çökmeden hata gösterir.
+- [x] Uygulama lokal Docker ortamında çalışır.
+- [x] Kullanıcı komut satırı kullanmadan benchmark çalıştırabilir.
+- [x] CSV dataset ile benchmark tamamlanır.
+- [x] JSON dataset ile benchmark tamamlanır.
+- [x] Sample dataset ile benchmark tamamlanır.
+- [x] PostgreSQL ve MongoDB sonuçları aynı arayüzde karşılaştırılır.
+- [x] Sonuçlar saklanır ve önceki sonuçlar görüntülenir.
+- [x] Sistem geçersiz inputlarda çökmeden hata gösterir.
 
 ---
 
