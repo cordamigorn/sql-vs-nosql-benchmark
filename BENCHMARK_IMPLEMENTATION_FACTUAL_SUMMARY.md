@@ -67,14 +67,16 @@ Current workflow when the user clicks **Run Benchmark**:
 2. The frontend checks whether the dataset was loaded into both databases and whether record counts match.
 3. The frontend sends `dataset_id`, `operation`, `record_count`, and `repetitions` to the backend.
 4. The backend validates the request with the `BenchmarkRunRequest` model.
-5. The backend retrieves dataset metadata using `get_dataset(dataset_id)`.
-6. The backend runs the PostgreSQL benchmark first.
-7. The backend runs the MongoDB benchmark second.
-8. Metrics are calculated for PostgreSQL and MongoDB using the same metric calculation function.
-9. A combined benchmark result is created.
-10. The result is stored in MongoDB in the `benchmark_results` collection.
-11. The result is returned to the frontend.
-12. The frontend displays the latest result and reloads previous benchmark results.
+5. The backend retrieves the dataset using `get_dataset(dataset_id)`.
+6. The backend prepares normalized dataset records with sequential `record_index` values.
+7. The backend validates `record_count` against the prepared dataset and against the loaded database source data.
+8. The backend runs the PostgreSQL benchmark first.
+9. The backend runs the MongoDB benchmark second.
+10. Metrics are calculated for PostgreSQL and MongoDB using the same metric calculation function.
+11. A combined benchmark result is created.
+12. The result is stored in MongoDB in the `benchmark_results` collection.
+13. The result is returned to the frontend.
+14. The frontend displays the latest result and reloads previous benchmark results.
 
 Temporary benchmark data preparation:
 
@@ -90,6 +92,8 @@ Database preparation:
 - Source dataset collection in MongoDB: `benchmark_dataset_records`.
 - PostgreSQL benchmark work table is created from the source table schema.
 - MongoDB benchmark work collection is created by inserting copied documents from the source collection.
+- PostgreSQL work data includes a simple `benchmark_updated` boolean column for UPDATE benchmarks.
+- MongoDB work data includes a `benchmark_updated` field for UPDATE benchmarks.
 
 Same dataset and record count:
 
@@ -128,21 +132,23 @@ Error handling:
 PostgreSQL:
 
 - Drops and recreates the work table.
-- Inserts the first `record_count` rows from `benchmark_dataset_records`.
-- Rows are selected in ascending `record_index` order.
-- Timed operation is the insert into the work table.
+- Adds the `benchmark_updated` boolean column outside timing.
+- Uses the first `record_count` normalized records prepared by the backend application.
+- Inserts records into `benchmark_work_records` with psycopg `executemany`.
+- Timed operation is the application-driven insert and commit.
 
 MongoDB:
 
-- Reads the first `record_count` documents from `benchmark_dataset_records`.
-- Documents are selected in ascending `record_index` order.
 - Drops the work collection.
-- Inserts the selected documents into the work collection.
-- Timed operation is the insert into the work collection.
+- Uses the same first `record_count` normalized logical records prepared by the backend application.
+- Creates documents with `_id` equal to `record_index`.
+- Inserts documents into `benchmark_work_records` with `insert_many`.
+- Timed operation is the application-driven insert.
 
 Notes:
 
-- `record_index` is used for ordering.
+- WRITE is application-driven for both databases.
+- Temporary work storage cleanup and record preparation happen before timing.
 - No selected field is used.
 - The operations are broadly equivalent as bulk insert operations.
 
@@ -151,42 +157,48 @@ Notes:
 PostgreSQL:
 
 - Copies the first `record_count` rows into the work table before timing.
-- Executes a count query on the work table.
+- Adds the `benchmark_updated` boolean column outside timing.
+- Retrieves rows from the work table with `SELECT *`.
 - Filter condition: `record_index <= record_count`.
+- The returned rows are materialized with `fetchall`.
 
 MongoDB:
 
 - Copies the first `record_count` documents into the work collection before timing.
-- Executes `count_documents`.
-- Filter condition: `record_index <= record_count`.
+- Sets `benchmark_updated` to `false` in the copied work documents outside timing.
+- Retrieves documents with `find`.
+- Filter condition: `_id <= record_count`.
+- The returned documents are materialized with `list(...)`.
 
 Notes:
 
-- `record_index` is used as the filter.
+- PostgreSQL uses `record_index` as the filter.
+- MongoDB uses `_id` as the filter because `_id` equals `record_index` in loaded and work documents.
 - No selected field is used.
-- The operations are equivalent as count-based read operations.
-- The implementation measures counting matched records, not full row or document retrieval.
+- The implementation measures materialized retrieval, not only count queries.
 
 ### UPDATE
 
 PostgreSQL:
 
 - Copies the first `record_count` rows into the work table before timing.
+- Adds the `benchmark_updated` boolean column outside timing.
 - Updates rows where `record_index <= record_count`.
-- Updates the `record_data` JSONB column by adding `{"benchmark_updated": true}`.
+- Sets the simple `benchmark_updated` column to `TRUE`.
 
 MongoDB:
 
 - Copies the first `record_count` documents into the work collection before timing.
-- Updates documents where `record_index <= record_count`.
-- Sets a top-level field `benchmark_updated` to `true`.
+- Sets `benchmark_updated` to `false` in the copied work documents outside timing.
+- Updates documents where `_id <= record_count`.
+- Sets the `benchmark_updated` field to `true`.
 
 Notes:
 
-- `record_index` is used as the filter.
+- PostgreSQL uses `record_index` as the filter.
+- MongoDB uses `_id` as the filter.
 - No selected field is used.
-- The operations are similar in purpose.
-- The physical update target differs: PostgreSQL updates a JSONB column, while MongoDB updates a top-level document field.
+- The operations are semantically closer than the previous JSONB update design because both update a simple benchmark flag.
 
 ### DELETE
 
@@ -198,11 +210,12 @@ PostgreSQL:
 MongoDB:
 
 - Copies the first `record_count` documents into the work collection before timing.
-- Deletes documents where `record_index <= record_count`.
+- Deletes documents where `_id <= record_count`.
 
 Notes:
 
-- `record_index` is used as the filter.
+- PostgreSQL uses `record_index` as the filter.
+- MongoDB uses `_id` as the filter because `_id` equals `record_index`.
 - No selected field is used.
 - The operations are equivalent as delete operations over the prepared work dataset.
 
@@ -219,6 +232,9 @@ Implemented same-condition rules:
 - Both databases use source storage named `benchmark_dataset_records`.
 - Both databases use temporary benchmark storage named `benchmark_work_records`.
 - Temporary benchmark storage is reset before each repetition.
+- WRITE uses the same first `record_count` application-prepared logical records for both databases.
+- READ materializes matching rows/documents for both databases instead of using count-only reads.
+- UPDATE modifies a simple benchmark update flag in both databases.
 
 Docker Compose environment:
 
@@ -237,10 +253,10 @@ Limitations that may affect fairness:
 - No warm-up phase is implemented.
 - No Docker CPU or memory limits are configured.
 - PostgreSQL has `record_index` as a primary key.
-- MongoDB uses `_id` equal to `record_index`, but no explicit index is created for `record_index`.
+- MongoDB uses `_id` equal to `record_index`; `_id` is indexed by MongoDB.
 - PostgreSQL and MongoDB store records in different physical structures.
-- PostgreSQL update modifies the `record_data` JSONB column.
-- MongoDB update modifies a top-level document field.
+- PostgreSQL and MongoDB drivers have different client-side batching behavior.
+- Execution order is still PostgreSQL first and MongoDB second.
 - The backend checks loaded record counts but does not verify that the currently loaded database contents still correspond to the requested `dataset_id`.
 
 ## 5. Evaluation Metrics Currently Implemented

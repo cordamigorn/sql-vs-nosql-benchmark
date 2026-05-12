@@ -10,13 +10,14 @@ import psycopg
 from fastapi import HTTPException
 from psycopg import sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from pymongo import ASCENDING, MongoClient
 from pymongo.errors import PyMongoError
 from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.datasets import get_dataset
-from app.loaders import MONGO_COLLECTION_NAME, POSTGRES_TABLE_NAME
+from app.loaders import MONGO_COLLECTION_NAME, POSTGRES_TABLE_NAME, PreparedDataset, prepare_dataset
 
 
 POSTGRES_WORK_TABLE_NAME = "benchmark_work_records"
@@ -66,9 +67,11 @@ class BenchmarkRunResult(BaseModel):
 
 def run_benchmark(request: BenchmarkRunRequest) -> BenchmarkRunResult:
     dataset = get_dataset(request.dataset_id)
+    prepared = prepare_dataset(dataset)
+    validate_record_count(request.record_count, len(prepared.records), "Dataset")
 
-    postgresql = run_postgres_benchmark(request)
-    mongodb = run_mongodb_benchmark(request)
+    postgresql = run_postgres_benchmark(request, prepared)
+    mongodb = run_mongodb_benchmark(request, prepared)
 
     result = BenchmarkRunResult(
         benchmark_id=f"bench_{uuid4().hex[:12]}",
@@ -174,7 +177,10 @@ def calculate_metrics(
     )
 
 
-def run_postgres_benchmark(request: BenchmarkRunRequest) -> BenchmarkDatabaseResult:
+def run_postgres_benchmark(
+    request: BenchmarkRunRequest,
+    prepared: PreparedDataset,
+) -> BenchmarkDatabaseResult:
     run_times_ms: list[float] = []
     affected_counts: list[int] = []
 
@@ -188,7 +194,12 @@ def run_postgres_benchmark(request: BenchmarkRunRequest) -> BenchmarkDatabaseRes
                     if request.operation == "WRITE":
                         setup_postgres_work_table(cursor, copy_records=False, record_count=request.record_count)
                         connection.commit()
-                        elapsed_ms, affected = time_postgres_write(cursor, connection, request.record_count)
+                        elapsed_ms, affected = time_postgres_write(
+                            cursor,
+                            connection,
+                            prepared,
+                            request.record_count,
+                        )
                     else:
                         setup_postgres_work_table(cursor, copy_records=True, record_count=request.record_count)
                         connection.commit()
@@ -249,21 +260,46 @@ def setup_postgres_work_table(
             (record_count,),
         )
 
+    cursor.execute(
+        sql.SQL("ALTER TABLE {} ADD COLUMN benchmark_updated BOOLEAN NOT NULL DEFAULT FALSE").format(
+            sql.Identifier(POSTGRES_WORK_TABLE_NAME)
+        )
+    )
+
 
 def time_postgres_write(
     cursor: psycopg.Cursor,
     connection: psycopg.Connection,
+    prepared: PreparedDataset,
     record_count: int,
 ) -> tuple[float, int]:
-    started = perf_counter()
-    cursor.execute(
-        sql.SQL("INSERT INTO {} SELECT * FROM {} ORDER BY record_index LIMIT %s").format(
-            sql.Identifier(POSTGRES_WORK_TABLE_NAME),
-            sql.Identifier(POSTGRES_TABLE_NAME),
-        ),
-        (record_count,),
+    records = prepared.records[:record_count]
+    columns = list(prepared.column_map.values())
+    insert_columns = ["record_index", *columns, "record_data"]
+    placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in insert_columns)
+    query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
+        sql.Identifier(POSTGRES_WORK_TABLE_NAME),
+        sql.SQL(", ").join(sql.Identifier(column) for column in insert_columns),
+        placeholders,
     )
-    affected = cursor.rowcount
+
+    values = []
+    for record in records:
+        source_record = {field: record[field] for field in prepared.fields}
+        values.append(
+            (
+                record["record_index"],
+                *(
+                    None if source_record[field] is None else str(source_record[field])
+                    for field in prepared.fields
+                ),
+                Jsonb(source_record),
+            )
+        )
+
+    started = perf_counter()
+    cursor.executemany(query, values)
+    affected = cursor.rowcount if cursor.rowcount >= 0 else len(values)
     connection.commit()
     return elapsed_ms(started), affected
 
@@ -277,21 +313,22 @@ def time_postgres_operation(
     if operation == "READ":
         started = perf_counter()
         cursor.execute(
-            sql.SQL("SELECT COUNT(*) AS count FROM {} WHERE record_index <= %s").format(
+            sql.SQL("SELECT * FROM {} WHERE record_index <= %s ORDER BY record_index").format(
                 sql.Identifier(POSTGRES_WORK_TABLE_NAME)
             ),
             (record_count,),
         )
-        affected = int(cursor.fetchone()["count"])
+        rows = cursor.fetchall()
+        affected = len(rows)
         return elapsed_ms(started), affected
 
     if operation == "UPDATE":
         started = perf_counter()
         cursor.execute(
-            sql.SQL("UPDATE {} SET record_data = record_data || %s::jsonb WHERE record_index <= %s").format(
+            sql.SQL("UPDATE {} SET benchmark_updated = TRUE WHERE record_index <= %s").format(
                 sql.Identifier(POSTGRES_WORK_TABLE_NAME)
             ),
-            ('{"benchmark_updated": true}', record_count),
+            (record_count,),
         )
         affected = cursor.rowcount
         connection.commit()
@@ -312,7 +349,10 @@ def time_postgres_operation(
     raise HTTPException(status_code=400, detail=f"Unsupported benchmark operation: {operation}.")
 
 
-def run_mongodb_benchmark(request: BenchmarkRunRequest) -> BenchmarkDatabaseResult:
+def run_mongodb_benchmark(
+    request: BenchmarkRunRequest,
+    prepared: PreparedDataset,
+) -> BenchmarkDatabaseResult:
     client: MongoClient | None = None
     run_times_ms: list[float] = []
     affected_counts: list[int] = []
@@ -327,7 +367,7 @@ def run_mongodb_benchmark(request: BenchmarkRunRequest) -> BenchmarkDatabaseResu
 
         for _ in range(request.repetitions):
             if request.operation == "WRITE":
-                docs = list(source.find({}, sort=[("record_index", ASCENDING)], limit=request.record_count))
+                docs = prepare_mongodb_write_documents(prepared, request.record_count)
                 work.drop()
                 elapsed_ms, affected = time_mongodb_write(work, docs)
             else:
@@ -359,8 +399,25 @@ def run_mongodb_benchmark(request: BenchmarkRunRequest) -> BenchmarkDatabaseResu
 def setup_mongodb_work_collection(source, work, record_count: int) -> None:
     work.drop()
     docs = list(source.find({}, sort=[("record_index", ASCENDING)], limit=record_count))
+    for doc in docs:
+        doc["benchmark_updated"] = False
     if docs:
         work.insert_many(docs, ordered=False)
+
+
+def prepare_mongodb_write_documents(
+    prepared: PreparedDataset,
+    record_count: int,
+) -> list[dict]:
+    return [
+        {
+            "_id": record["record_index"],
+            "record_index": record["record_index"],
+            **{field: record[field] for field in prepared.fields},
+            "benchmark_updated": False,
+        }
+        for record in prepared.records[:record_count]
+    ]
 
 
 def time_mongodb_write(work, docs: list[dict]) -> tuple[float, int]:
@@ -378,11 +435,12 @@ def time_mongodb_operation(
     operation: BenchmarkOperation,
     record_count: int,
 ) -> tuple[float, int]:
-    filter_query = {"record_index": {"$lte": record_count}}
+    filter_query = {"_id": {"$lte": record_count}}
 
     if operation == "READ":
         started = perf_counter()
-        affected = work.count_documents(filter_query)
+        docs = list(work.find(filter_query).sort("_id", ASCENDING))
+        affected = len(docs)
         return elapsed_ms(started), affected
 
     if operation == "UPDATE":

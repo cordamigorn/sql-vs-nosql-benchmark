@@ -527,7 +527,9 @@ Behavior:
 - PostgreSQL drops and recreates the work table.
 - MongoDB drops the work collection.
 - For non-WRITE operations, the first `record_count` source records are copied into the work storage before timing.
-- For WRITE operations, the timed operation is inserting records into initially empty work storage.
+- For WRITE operations, the backend prepares the same first `record_count` logical records in the application and inserts them through each database driver.
+- PostgreSQL work tables include a simple `benchmark_updated` boolean column for UPDATE benchmarks.
+- MongoDB work documents include a `benchmark_updated` field for UPDATE benchmarks.
 
 ### PostgreSQL benchmark flow
 
@@ -541,16 +543,20 @@ Flow:
 4. Repeats the benchmark for `request.repetitions`.
 5. For `WRITE`:
    - drops and recreates an empty work table.
+   - adds the `benchmark_updated` boolean column outside timing.
    - commits setup.
-   - times insertion of the first `record_count` rows from the source table ordered by `record_index`.
+   - uses the first `record_count` normalized records prepared by the backend application.
+   - times psycopg `executemany` insertion and commit into the work table.
 6. For `READ`:
    - drops and recreates the work table.
    - copies first `record_count` source rows into the work table.
+   - adds the `benchmark_updated` boolean column outside timing.
    - commits setup.
-   - times `SELECT COUNT(*)` with `record_index <= record_count`.
+   - times `SELECT *` with `record_index <= record_count`.
+   - materializes returned rows with `fetchall`.
 7. For `UPDATE`:
    - prepares the work table with copied source rows.
-   - times update of `record_data` JSONB with `{"benchmark_updated": true}` where `record_index <= record_count`.
+   - times update of the simple `benchmark_updated` column where `record_index <= record_count`.
 8. For `DELETE`:
    - prepares the work table with copied source rows.
    - times deletion where `record_index <= record_count`.
@@ -572,18 +578,21 @@ Flow:
 5. Validates that the requested `record_count` is available.
 6. Repeats the benchmark for `request.repetitions`.
 7. For `WRITE`:
-   - reads first `record_count` source documents sorted by `record_index`.
+   - uses the same first `record_count` normalized records prepared by the backend application.
+   - creates MongoDB documents with `_id` equal to `record_index`.
    - drops the work collection.
    - times `insert_many` into the work collection.
 8. For `READ`:
    - drops and repopulates the work collection with first `record_count` source documents.
-   - times `count_documents` with `record_index <= record_count`.
+   - sets `benchmark_updated` to `false` in copied work documents outside timing.
+   - times `find` with `_id <= record_count`.
+   - materializes returned documents with `list(...)`.
 9. For `UPDATE`:
    - prepares the work collection with copied source documents.
-   - times `update_many` setting `benchmark_updated` to `true`.
+   - times `update_many` setting `benchmark_updated` to `true` where `_id <= record_count`.
 10. For `DELETE`:
    - prepares the work collection with copied source documents.
-   - times `delete_many`.
+   - times `delete_many` where `_id <= record_count`.
 11. Stores each repetition time in `run_times_ms`.
 12. Stores each affected/read count in `affected_counts`.
 13. Calculates metrics.
@@ -604,9 +613,9 @@ Flow:
 - `elapsed_ms` converts elapsed seconds to milliseconds.
 - Timed sections include only the database operation under test.
 - Temporary setup work is performed before the timer starts.
-- WRITE timing includes the insert into empty work storage.
-- READ timing measures count queries.
-- UPDATE timing measures update operations.
+- WRITE timing measures the application-driven insert into empty work storage.
+- READ timing measures materialized retrieval of matching rows/documents.
+- UPDATE timing measures update operations against a simple benchmark update flag.
 - DELETE timing measures delete operations.
 
 ### Error handling in benchmark execution
@@ -631,6 +640,9 @@ Implemented fairness controls:
 - Both databases read from a loaded source dataset named `benchmark_dataset_records`.
 - Both databases use temporary benchmark storage named `benchmark_work_records`.
 - Temporary benchmark storage is reset before each repetition.
+- WRITE uses the same first `record_count` application-prepared logical records for both databases.
+- READ materializes matching rows/documents for both databases instead of using count-only reads.
+- UPDATE modifies a simple benchmark update flag in both databases.
 - Metrics for both databases are calculated using the same `calculate_metrics` function.
 - Both services run in the same Docker Compose environment.
 
