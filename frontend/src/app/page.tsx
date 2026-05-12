@@ -471,17 +471,24 @@ export default function Home() {
             >
               {sampleOptions.map((option) => (
                 <option key={option.sample_id} value={option.sample_id}>
-                  {option.dataset_name} - {option.record_count.toLocaleString()} records
+                  {option.dataset_name} - {formatInteger(option.record_count)} records
                 </option>
               ))}
             </select>
           </div>
 
           <form className="upload-form" onSubmit={handleUpload}>
-            <label className="file-control">
+            <label className="file-control" htmlFor="dataset-file">
               <span>Dataset file</span>
+              <span className="file-input-row">
+                <span className="file-picker-button">Choose File</span>
+                <span className="file-name">
+                  {selectedFile ? selectedFile.name : "No file chosen"}
+                </span>
+              </span>
               <input
                 accept=".csv,.json,text/csv,application/json"
+                id="dataset-file"
                 type="file"
                 onChange={(event) => {
                   setSelectedFile(event.target.files?.[0] ?? null);
@@ -552,7 +559,7 @@ export default function Home() {
 
             <div className="benchmark-readonly">
               <span>Records used</span>
-              <strong>{dataset ? dataset.record_count.toLocaleString() : "-"}</strong>
+              <strong>{dataset ? formatInteger(dataset.record_count) : "-"}</strong>
             </div>
 
             <button
@@ -599,15 +606,15 @@ function LoadSummary({ result }: { result: DatasetLoadResult }) {
       <div className="summary-grid three-columns">
         <SummaryItem
           label="Expected"
-          value={result.expected_record_count.toLocaleString()}
+          value={formatInteger(result.expected_record_count)}
         />
         <SummaryItem
           label="NoSQL / MongoDB"
-          value={`${result.mongodb.record_count.toLocaleString()} documents`}
+          value={`${formatInteger(result.mongodb.record_count)} documents`}
         />
         <SummaryItem
           label="SQL / PostgreSQL"
-          value={`${result.postgresql.record_count.toLocaleString()} rows`}
+          value={`${formatInteger(result.postgresql.record_count)} rows`}
         />
       </div>
       <div className="target-list">
@@ -626,8 +633,8 @@ function BenchmarkSummary({ result }: { result: BenchmarkRunResult }) {
         <span className="badge ok">{result.benchmark_id}</span>
       </div>
       <div className="summary-grid three-columns">
-        <SummaryItem label="Records" value={result.record_count.toLocaleString()} />
-        <SummaryItem label="Repetitions" value={result.repetitions.toLocaleString()} />
+        <SummaryItem label="Records" value={formatInteger(result.record_count)} />
+        <SummaryItem label="Repetitions" value={formatInteger(result.repetitions)} />
         <SummaryItem label="Operation" value={result.operation} />
       </div>
       <div className="benchmark-result-grid">
@@ -682,7 +689,7 @@ function DatabaseBenchmarkPanel({
         <SummaryItem label="Std dev" value={formatMs(result.metrics.std_dev_ms)} />
         <SummaryItem
           label="Operations"
-          value={result.metrics.operation_count.toLocaleString()}
+          value={formatInteger(result.metrics.operation_count)}
         />
         <SummaryItem label="Target" value={result.target_name} mono />
       </div>
@@ -1110,6 +1117,10 @@ function formatChartValue(value: number) {
   });
 }
 
+function formatInteger(value: number) {
+  return value.toLocaleString();
+}
+
 function pickFasterDatabase(
   postgresqlValue: number,
   mongodbValue: number,
@@ -1132,7 +1143,7 @@ function DatasetSummary({ dataset }: { dataset: DatasetMetadata }) {
       <div className="summary-grid">
         <SummaryItem label="Dataset ID" value={dataset.dataset_id} mono />
         <SummaryItem label="Name" value={dataset.dataset_name} />
-        <SummaryItem label="Records" value={dataset.record_count.toLocaleString()} />
+        <SummaryItem label="Records" value={formatInteger(dataset.record_count)} />
         <SummaryItem label="Source" value={dataset.source} />
         <SummaryItem label="Type" value={dataset.file_type.toUpperCase()} />
       </div>

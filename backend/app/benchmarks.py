@@ -208,6 +208,7 @@ def run_postgres_benchmark(
                             connection,
                             request.operation,
                             request.record_count,
+                            prepared,
                         )
 
                     run_times_ms.append(elapsed_ms)
@@ -309,11 +310,14 @@ def time_postgres_operation(
     connection: psycopg.Connection,
     operation: BenchmarkOperation,
     record_count: int,
+    prepared: PreparedDataset,
 ) -> tuple[float, int]:
     if operation == "READ":
+        read_columns = ["record_index", *prepared.column_map.values(), "benchmark_updated"]
         started = perf_counter()
         cursor.execute(
-            sql.SQL("SELECT * FROM {} WHERE record_index <= %s ORDER BY record_index").format(
+            sql.SQL("SELECT {} FROM {} WHERE record_index <= %s ORDER BY record_index").format(
+                sql.SQL(", ").join(sql.Identifier(column) for column in read_columns),
                 sql.Identifier(POSTGRES_WORK_TABLE_NAME)
             ),
             (record_count,),
@@ -376,6 +380,7 @@ def run_mongodb_benchmark(
                     work,
                     request.operation,
                     request.record_count,
+                    prepared,
                 )
 
             run_times_ms.append(elapsed_ms)
@@ -434,12 +439,19 @@ def time_mongodb_operation(
     work,
     operation: BenchmarkOperation,
     record_count: int,
+    prepared: PreparedDataset,
 ) -> tuple[float, int]:
     filter_query = {"_id": {"$lte": record_count}}
 
     if operation == "READ":
+        projection = {
+            "_id": 0,
+            "record_index": 1,
+            "benchmark_updated": 1,
+            **{field: 1 for field in prepared.fields},
+        }
         started = perf_counter()
-        docs = list(work.find(filter_query).sort("_id", ASCENDING))
+        docs = list(work.find(filter_query, projection).sort("_id", ASCENDING))
         affected = len(docs)
         return elapsed_ms(started), affected
 

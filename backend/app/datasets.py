@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from io import StringIO
@@ -256,13 +257,104 @@ def _scan_sample_datasets() -> tuple[SampleDatasetOption, ...]:
 
 
 def _sample_file_metadata(path: Path, file_type: str) -> tuple[list[str], int]:
-    text = _read_dataset_file(path)
     if file_type == "csv":
-        records, fields = parse_csv_dataset(text)
-        return fields, len(records)
+        return _csv_sample_file_metadata(path)
 
+    inferred_count = _infer_sample_record_count(path)
+    if inferred_count is not None:
+        return _json_sample_fields(path), inferred_count
+
+    text = _read_dataset_file(path)
     records, fields = parse_json_dataset(text)
     return fields, len(records)
+
+
+def _csv_sample_file_metadata(path: Path) -> tuple[list[str], int]:
+    inferred_count = _infer_sample_record_count(path)
+
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as file:
+            rows = csv.reader(file)
+            header = next(rows)
+            fields = [field.strip() for field in header]
+            validate_fields(fields, "CSV header")
+
+            if inferred_count is not None:
+                return fields, inferred_count
+
+            record_count = sum(1 for row in rows if row and any(value.strip() for value in row))
+            return fields, record_count
+    except StopIteration as exc:
+        raise HTTPException(status_code=400, detail="CSV file must include a header row.") from exc
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Sample dataset '{path.name}' must be UTF-8 encoded.") from exc
+    except csv.Error as exc:
+        raise HTTPException(status_code=400, detail=f"CSV parsing failed: {exc}") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not read sample dataset '{path.name}'.") from exc
+
+
+def _json_sample_fields(path: Path) -> list[str]:
+    decoder = json.JSONDecoder()
+    buffer = ""
+    array_start: int | None = None
+
+    try:
+        with path.open("r", encoding="utf-8-sig") as file:
+            while True:
+                chunk = file.read(65536)
+                if not chunk and not buffer:
+                    raise HTTPException(status_code=400, detail="JSON dataset must include at least one object.")
+
+                buffer += chunk
+                if array_start is None:
+                    array_start = buffer.find("[")
+                    if array_start == -1:
+                        if not chunk:
+                            raise HTTPException(status_code=400, detail="JSON dataset must be an array of objects.")
+                        continue
+
+                item_start = array_start + 1
+                while item_start < len(buffer) and buffer[item_start].isspace():
+                    item_start += 1
+
+                if item_start < len(buffer) and buffer[item_start] == "]":
+                    raise HTTPException(status_code=400, detail="JSON dataset must include at least one object.")
+
+                try:
+                    item, _ = decoder.raw_decode(buffer[item_start:])
+                except json.JSONDecodeError:
+                    if chunk:
+                        continue
+                    raise
+
+                if not isinstance(item, dict):
+                    raise HTTPException(status_code=400, detail="JSON dataset items must be objects.")
+
+                fields = list(item.keys())
+                validate_fields(fields, "JSON object")
+                return fields
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Sample dataset '{path.name}' must be UTF-8 encoded.") from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc.msg}.") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Could not read sample dataset '{path.name}'.") from exc
+
+
+def _infer_sample_record_count(path: Path) -> int | None:
+    suffix = path.stem.rsplit("_", 1)[-1].lower()
+    match = re.fullmatch(r"(\d+)([km]?)", suffix)
+    if match is None:
+        return None
+
+    value = int(match.group(1))
+    unit = match.group(2)
+    if unit == "k":
+        return value * 1_000
+    if unit == "m":
+        return value * 1_000_000
+    return value
 
 
 def _sample_path(sample_id: str) -> Path:

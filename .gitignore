@@ -14,5 +14,7 @@ out/
 dist/
 coverage/
 
+sample_datasets/
+
 *.log
 Dockerfile.local
