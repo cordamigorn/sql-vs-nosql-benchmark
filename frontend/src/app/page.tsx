@@ -679,7 +679,7 @@ function DatabaseBenchmarkPanel({
       </div>
       <div className="summary-grid metric-grid">
         <SummaryItem label="Total time" value={formatMs(result.metrics.total_time_ms)} />
-        <SummaryItem label="Avg latency" value={formatMs(result.metrics.average_latency_ms)} />
+        <SummaryItem label="Avg time / record" value={formatMs(result.metrics.average_latency_ms)} />
         <SummaryItem
           label="Throughput"
           value={`${formatNumber(result.metrics.throughput_ops_sec)} ops/sec`}
@@ -719,7 +719,7 @@ function MetricComparison({ result }: { result: BenchmarkRunResult }) {
     },
     {
       key: "average_latency_ms",
-      label: "Average latency",
+      label: "Avg time / record",
       lowerIsBetter: true,
       formatter: formatMs,
     },

@@ -102,8 +102,8 @@ Because this is a thesis project, the system is intended primarily for controlle
    - UPDATE
    - DELETE
 6. The user configures benchmark parameters:
-   - Record count
    - Number of repetitions
+   - The record count is the full selected dataset size.
 7. The user clicks **Run Benchmark**.
 8. The backend executes the selected benchmark on PostgreSQL and MongoDB.
 9. The system collects performance results.
@@ -256,7 +256,7 @@ The user shall be able to configure benchmark parameters before running a test.
 | --- | --- |
 | Dataset source | Uploaded CSV, uploaded JSON, or sample dataset |
 | Operation type | WRITE, READ, UPDATE, or DELETE |
-| Record count | Number of records used in the benchmark |
+| Record count | Full selected dataset size used in the benchmark |
 | Repetitions | Number of times the benchmark is repeated |
 
 ### Recommended Default Values
@@ -264,8 +264,10 @@ The user shall be able to configure benchmark parameters before running a test.
 | Parameter | Default value |
 | --- | --- |
 | Dataset | Sample dataset |
-| Record count | 1,000 |
+| Record count | Full selected dataset size |
 | Repetitions | 5 |
+
+The benchmark uses the full selected dataset size. For example, selecting the 100K sample dataset runs the selected operation over 100,000 records.
 
 ---
 
@@ -282,12 +284,12 @@ Example:
 - PostgreSQL WRITE total time: `120 ms`
 - MongoDB WRITE total time: `85 ms`
 
-### 10.2 Average Latency
+### 10.2 Avg Time / Record
 
-The average time required to complete a single operation or query.
+The displayed Avg time / record metric is calculated as total execution time divided by the number of affected records/documents.
 
 ```text
-average_latency = total_execution_time / number_of_operations
+avg_time_per_record = total_execution_time / number_of_affected_records_or_documents
 ```
 
 ### 10.3 Throughput
@@ -327,7 +329,7 @@ The system shall show separate result cards for PostgreSQL and MongoDB.
 Each card should display:
 
 - Total execution time
-- Average latency
+- Avg time / record
 - Throughput
 - Minimum time
 - Maximum time
@@ -342,7 +344,7 @@ Example:
 | Metric | PostgreSQL | MongoDB | Faster |
 | --- | ---: | ---: | --- |
 | Total time | 120 ms | 85 ms | MongoDB |
-| Average latency | 0.12 ms | 0.085 ms | MongoDB |
+| Avg time / record | 0.12 ms | 0.085 ms | MongoDB |
 | Throughput | 8,333 ops/sec | 11,764 ops/sec | MongoDB |
 
 ### 11.3 Charts
@@ -478,7 +480,7 @@ Docker is used to:
 | FR-3 | The system shall allow the user to run benchmarks using a built-in sample dataset. |
 | FR-4 | The system shall load the same dataset into PostgreSQL and MongoDB. |
 | FR-5 | The system shall allow the user to select one benchmark operation: WRITE, READ, UPDATE, or DELETE. |
-| FR-6 | The system shall allow the user to select record count and repetitions for each benchmark run. |
+| FR-6 | The system shall use the full selected dataset record count and allow the user to select repetitions for each benchmark run. |
 | FR-7 | The system shall execute the selected benchmark operation on PostgreSQL and MongoDB. |
 | FR-8 | The system shall collect performance metrics from both databases. |
 | FR-9 | The system shall display benchmark results using tables and charts. |
@@ -715,7 +717,7 @@ The upload section shall include:
 The benchmark form shall include:
 
 - Operation selector
-- Record count input
+- Read-only record count display
 - Repetition input
 
 ### 21.4 Results Section
@@ -739,7 +741,7 @@ The project is considered complete when:
 - The backend can load the same dataset into PostgreSQL and MongoDB.
 - The user can select WRITE, READ, UPDATE, or DELETE benchmarks.
 - The backend can execute the selected operation on both databases.
-- The system can measure execution time, average latency, and throughput.
+- The system can measure execution time, avg time / record, and throughput.
 - The system can display results in tables and charts.
 - The system can store benchmark results.
 - The application can run locally using Docker Compose.
@@ -758,7 +760,7 @@ The minimum viable product shall include:
 - WRITE benchmark
 - READ benchmark
 - Total execution time
-- Average latency
+- Avg time / record
 - Throughput
 - Result cards
 - Comparison table
@@ -810,7 +812,7 @@ Only the MVP and core thesis scope should be implemented first. Features listed 
 ### Milestone 4: Metrics and Result Storage
 
 - Calculate total execution time.
-- Calculate average latency.
+- Calculate avg time / record.
 - Calculate throughput.
 - Calculate minimum and maximum time.
 - Calculate standard deviation.

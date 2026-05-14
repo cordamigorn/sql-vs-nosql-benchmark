@@ -70,13 +70,14 @@ Current workflow when the user clicks **Run Benchmark**:
 5. The backend retrieves the dataset using `get_dataset(dataset_id)`.
 6. The backend prepares normalized dataset records with sequential `record_index` values.
 7. The backend validates `record_count` against the prepared dataset and against the loaded database source data.
-8. The backend runs the PostgreSQL benchmark first.
-9. The backend runs the MongoDB benchmark second.
-10. Metrics are calculated for PostgreSQL and MongoDB using the same metric calculation function.
-11. A combined benchmark result is created.
-12. The result is stored in MongoDB in the `benchmark_results` collection.
-13. The result is returned to the frontend.
-14. The frontend displays the latest result and reloads previous benchmark results.
+8. The backend runs one unmeasured warm-up repetition for PostgreSQL.
+9. The backend runs one unmeasured warm-up repetition for MongoDB.
+10. The backend runs measured repetitions in alternating order.
+11. Metrics are calculated for PostgreSQL and MongoDB using the same metric calculation function.
+12. A combined benchmark result is created.
+13. The result is stored in MongoDB in the `benchmark_results` collection.
+14. The result is returned to the frontend.
+15. The frontend displays the latest result and reloads previous benchmark results.
 
 Temporary benchmark data preparation:
 
@@ -105,14 +106,19 @@ Same dataset and record count:
 Repetitions:
 
 - Repetitions are implemented.
+- One warm-up repetition runs per database before measured repetitions.
+- Warm-up results are validated but not included in metrics.
 - For each repetition, temporary benchmark data is prepared again.
 - One timed operation is executed per repetition.
 - Each repetition produces one run time and one affected count.
+- Each measured repetition validates that the affected/read count equals the requested `record_count`.
 
 Execution order:
 
-1. PostgreSQL benchmark runs completely for all repetitions.
-2. MongoDB benchmark runs completely for all repetitions.
+1. Warm-up runs PostgreSQL once, then MongoDB once.
+2. Measured repetition 1 runs PostgreSQL, then MongoDB.
+3. Measured repetition 2 runs MongoDB, then PostgreSQL.
+4. The measured order continues alternating by repetition number.
 
 Error handling:
 
@@ -120,6 +126,7 @@ Error handling:
 - Missing PostgreSQL source table returns `400`.
 - Empty loaded data returns `400`.
 - Requested `record_count` larger than loaded count returns `400`.
+- Affected/read count mismatch returns `500` with database name, operation, repetition, expected count, and actual count.
 - PostgreSQL benchmark failures return `500`.
 - MongoDB benchmark failures return `500`.
 - Result storage failures return `500`.
@@ -245,18 +252,14 @@ Docker Compose environment:
 - PostgreSQL data is stored in the `postgres_data` Docker volume.
 - MongoDB data is stored in the `mongodb_data` Docker volume.
 
-Limitations that may affect fairness:
+Remaining limitations that may affect fairness:
 
-- PostgreSQL benchmarks run before MongoDB benchmarks.
-- Benchmark repetitions are not interleaved between databases.
 - No explicit cache clearing is implemented.
-- No warm-up phase is implemented.
 - No Docker CPU or memory limits are configured.
 - PostgreSQL has `record_index` as a primary key.
 - MongoDB uses `_id` equal to `record_index`; `_id` is indexed by MongoDB.
 - PostgreSQL and MongoDB store records in different physical structures.
 - PostgreSQL and MongoDB drivers have different client-side batching behavior.
-- Execution order is still PostgreSQL first and MongoDB second.
 - The backend checks loaded record counts but does not verify that the currently loaded database contents still correspond to the requested `dataset_id`.
 
 ## 5. Evaluation Metrics Currently Implemented
@@ -266,7 +269,7 @@ The same metrics are calculated for PostgreSQL and MongoDB using `calculate_metr
 | Metric | Implemented | Meaning | Calculation | Basis |
 |---|---:|---|---|---|
 | `total_time_ms` | Yes | Total measured execution time across repetitions. | Sum of all `run_times_ms`. | Repeated runs |
-| `average_latency_ms` | Yes | Average time per affected/read record. | `total_time_ms / sum(affected_counts)`. | Aggregate repeated runs |
+| `average_latency_ms` | Yes | Avg time / record. | `total_time_ms / sum(affected_counts)`. | Aggregate repeated runs |
 | `throughput_ops_sec` | Yes | Operations processed per second. | `sum(affected_counts) / (total_time_ms / 1000)`. | Aggregate repeated runs |
 | `min_time_ms` | Yes | Fastest repetition time. | Minimum value in `run_times_ms`. | Repeated runs |
 | `max_time_ms` | Yes | Slowest repetition time. | Maximum value in `run_times_ms`. | Repeated runs |
@@ -359,7 +362,7 @@ Comparison table:
 - Implemented.
 - Includes:
   - total execution time
-  - average latency
+  - Avg time / record
   - throughput
   - minimum time
   - maximum time
@@ -407,7 +410,6 @@ Not implemented:
 - Export as PDF
 - Authentication
 - Multi-user support
-- Warm-up runs
 - Explicit cache clearing
 - Explicit Docker resource limiting
 

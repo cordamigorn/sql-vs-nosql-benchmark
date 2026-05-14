@@ -209,9 +209,7 @@ PostgreSQL loading:
 - New table is created with:
   - `record_index BIGINT PRIMARY KEY`
   - one `TEXT` column per dataset field
-  - `record_data JSONB NOT NULL`
 - Records are inserted with `executemany`.
-- Original record content is also stored in `record_data` as JSONB.
 - A count query verifies the inserted row count.
 
 MongoDB loading:
@@ -409,7 +407,7 @@ Each result card displays:
 
 - status badge
 - total time
-- average latency
+- Avg time / record
 - throughput
 - minimum time
 - maximum time
@@ -425,7 +423,7 @@ The comparison table is implemented in `MetricComparison`.
 Displayed metrics:
 
 - total execution time
-- average latency
+- Avg time / record
 - throughput
 - minimum time
 - maximum time
@@ -533,41 +531,43 @@ Behavior:
 
 ### PostgreSQL benchmark flow
 
-Implemented in `run_postgres_benchmark`.
+PostgreSQL repetition execution is implemented in `run_postgres_repetition` and orchestrated by `run_database_benchmarks`.
 
 Flow:
 
 1. Connects to PostgreSQL.
 2. Counts source rows in `benchmark_dataset_records`.
 3. Validates that the requested `record_count` is available.
-4. Repeats the benchmark for `request.repetitions`.
-5. For `WRITE`:
+4. Runs one unmeasured warm-up repetition before measured repetitions.
+5. Runs measured repetitions through the shared alternating-order orchestrator.
+6. For `WRITE`:
    - drops and recreates an empty work table.
    - adds the `benchmark_updated` boolean column outside timing.
    - commits setup.
    - uses the first `record_count` normalized records prepared by the backend application.
    - times psycopg `executemany` insertion and commit into the work table.
-6. For `READ`:
+7. For `READ`:
    - drops and recreates the work table.
    - copies first `record_count` source rows into the work table.
    - adds the `benchmark_updated` boolean column outside timing.
    - commits setup.
-   - times `SELECT *` with `record_index <= record_count`.
+   - times selection of `record_index`, dataset columns, and `benchmark_updated` with `record_index <= record_count`.
    - materializes returned rows with `fetchall`.
-7. For `UPDATE`:
+8. For `UPDATE`:
    - prepares the work table with copied source rows.
    - times update of the simple `benchmark_updated` column where `record_index <= record_count`.
-8. For `DELETE`:
+9. For `DELETE`:
    - prepares the work table with copied source rows.
    - times deletion where `record_index <= record_count`.
-9. Stores each repetition time in `run_times_ms`.
-10. Stores each affected/read count in `affected_counts`.
-11. Calculates metrics.
-12. Returns a `BenchmarkDatabaseResult`.
+10. Validates each measured affected/read count against `record_count`.
+11. Stores each measured repetition time in `run_times_ms`.
+12. Stores each measured affected/read count in `affected_counts`.
+13. Calculates metrics.
+14. Returns a `BenchmarkDatabaseResult`.
 
 ### MongoDB benchmark flow
 
-Implemented in `run_mongodb_benchmark`.
+MongoDB repetition execution is implemented in `run_mongodb_repetition` and orchestrated by `run_database_benchmarks`.
 
 Flow:
 
@@ -576,31 +576,35 @@ Flow:
 3. Uses work collection `benchmark_work_records`.
 4. Counts source documents.
 5. Validates that the requested `record_count` is available.
-6. Repeats the benchmark for `request.repetitions`.
-7. For `WRITE`:
+6. Runs one unmeasured warm-up repetition before measured repetitions.
+7. Runs measured repetitions through the shared alternating-order orchestrator.
+8. For `WRITE`:
    - uses the same first `record_count` normalized records prepared by the backend application.
    - creates MongoDB documents with `_id` equal to `record_index`.
    - drops the work collection.
    - times `insert_many` into the work collection.
-8. For `READ`:
+9. For `READ`:
    - drops and repopulates the work collection with first `record_count` source documents.
    - sets `benchmark_updated` to `false` in copied work documents outside timing.
    - times `find` with `_id <= record_count`.
    - materializes returned documents with `list(...)`.
-9. For `UPDATE`:
+10. For `UPDATE`:
    - prepares the work collection with copied source documents.
    - times `update_many` setting `benchmark_updated` to `true` where `_id <= record_count`.
-10. For `DELETE`:
+11. For `DELETE`:
    - prepares the work collection with copied source documents.
    - times `delete_many` where `_id <= record_count`.
-11. Stores each repetition time in `run_times_ms`.
-12. Stores each affected/read count in `affected_counts`.
-13. Calculates metrics.
-14. Returns a `BenchmarkDatabaseResult`.
+12. Validates each measured affected/read count against `record_count`.
+13. Stores each measured repetition time in `run_times_ms`.
+14. Stores each measured affected/read count in `affected_counts`.
+15. Calculates metrics.
+16. Returns a `BenchmarkDatabaseResult`.
 
 ### Repetition handling
 
-- Repetitions are implemented with a loop in each database benchmark function.
+- Repetitions are implemented by the shared benchmark orchestrator.
+- One warm-up repetition is run per database and excluded from metrics.
+- Measured repetitions are interleaved by alternating database order.
 - Each repetition prepares temporary work storage before running the timed operation.
 - Each repetition produces:
   - one elapsed time
@@ -625,6 +629,7 @@ Benchmark-specific error handling:
 - Missing PostgreSQL source table returns `400`.
 - Empty loaded data returns `400`.
 - Requested record count larger than loaded database count returns `400`.
+- Affected/read count mismatch returns `500`.
 - Unsupported benchmark operation returns `400`.
 - PostgreSQL driver errors return `500`.
 - MongoDB driver errors return `500`.
@@ -640,6 +645,9 @@ Implemented fairness controls:
 - Both databases read from a loaded source dataset named `benchmark_dataset_records`.
 - Both databases use temporary benchmark storage named `benchmark_work_records`.
 - Temporary benchmark storage is reset before each repetition.
+- Warm-up runs are excluded from metrics.
+- Measured repetitions alternate database order.
+- Each measured affected/read count is validated against `record_count`.
 - WRITE uses the same first `record_count` application-prepared logical records for both databases.
 - READ materializes matching rows/documents for both databases instead of using count-only reads.
 - UPDATE modifies a simple benchmark update flag in both databases.
@@ -648,9 +656,6 @@ Implemented fairness controls:
 
 Limitations:
 
-- PostgreSQL runs first, then MongoDB.
-- Repetitions are not interleaved between databases.
-- No warm-up run is implemented.
 - No explicit cache clearing is implemented.
 - No CPU or memory monitoring is implemented.
 - No concurrent workload execution is implemented.

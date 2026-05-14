@@ -162,7 +162,7 @@ WRITE, READ, UPDATE ve DELETE benchmark operasyonlarını PostgreSQL ve MongoDB 
 ### Acceptance Criteria
 
 - [x] Kullanıcı frontend üzerinden benchmark operasyonu seçebilir.
-- [x] Kullanıcı record count ve repetitions değerlerini belirleyebilir.
+- [x] Sistem full selected dataset record count değerini kullanır; kullanıcı repetitions değerini belirleyebilir.
 - [x] Sistem WRITE benchmark çalıştırabilir.
 - [x] Sistem READ benchmark çalıştırabilir.
 - [x] Sistem UPDATE benchmark çalıştırabilir.
@@ -181,7 +181,7 @@ Benchmark sonuçları için performans metriklerini hesaplamak ve sonuçları da
 ### Tasks
 
 - [x] Total execution time hesapla.
-- [x] Average latency hesapla.
+- [x] Avg time / record hesapla.
 - [x] Throughput hesapla.
 - [x] Minimum time hesapla.
 - [x] Maximum time hesapla.
@@ -198,7 +198,7 @@ Benchmark sonuçları için performans metriklerini hesaplamak ve sonuçları da
 | Metric | Description |
 | --- | --- |
 | Total execution time | Benchmark operasyonunun toplam çalışma süresi |
-| Average latency | Bir operasyon başına ortalama süre |
+| Avg time / record | Toplam sürenin etkilenen kayıt/doküman sayısına bölünmesi |
 | Throughput | Saniye başına tamamlanan operasyon sayısı |
 | Minimum time | Repetition sonuçları içindeki en hızlı çalışma süresi |
 | Maximum time | Repetition sonuçları içindeki en yavaş çalışma süresi |
@@ -216,7 +216,7 @@ Benchmark sonuçları için performans metriklerini hesaplamak ve sonuçları da
 
 - [x] Her benchmark sonucu PostgreSQL ve MongoDB metriklerini içerir.
 - [x] Total execution time hesaplanır.
-- [x] Average latency hesaplanır.
+- [x] Avg time / record hesaplanır.
 - [x] Throughput hesaplanır.
 - [x] Minimum ve maximum time hesaplanır.
 - [x] Standard deviation hesaplanır.

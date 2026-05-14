@@ -8,7 +8,6 @@ import psycopg
 from fastapi import HTTPException
 from psycopg import sql
 from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from pydantic import BaseModel
@@ -150,7 +149,7 @@ def recreate_postgres_table(cursor: psycopg.Cursor[Any], columns: list[str]) -> 
         sql.SQL("{} TEXT").format(sql.Identifier(column)) for column in columns
     ]
     create_query = sql.SQL(
-        "CREATE TABLE {} (record_index BIGINT PRIMARY KEY, {}, record_data JSONB NOT NULL)"
+        "CREATE TABLE {} (record_index BIGINT PRIMARY KEY, {})"
     ).format(
         sql.Identifier(POSTGRES_TABLE_NAME),
         sql.SQL(", ").join(column_definitions),
@@ -160,7 +159,7 @@ def recreate_postgres_table(cursor: psycopg.Cursor[Any], columns: list[str]) -> 
 
 def insert_postgres_records(cursor: psycopg.Cursor[Any], prepared: PreparedDataset) -> None:
     columns = list(prepared.column_map.values())
-    insert_columns = ["record_index", *columns, "record_data"]
+    insert_columns = ["record_index", *columns]
     placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in insert_columns)
     query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
         sql.Identifier(POSTGRES_TABLE_NAME),
@@ -175,7 +174,6 @@ def insert_postgres_records(cursor: psycopg.Cursor[Any], prepared: PreparedDatas
             (
                 record["record_index"],
                 *(None if source_record[field] is None else str(source_record[field]) for field in prepared.fields),
-                Jsonb(source_record),
             )
         )
 
