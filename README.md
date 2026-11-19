@@ -20,6 +20,28 @@ For each operation and each database, over 1–20 repetitions:
 
 Every run is stored, so earlier results can be listed and compared again.
 
+![Benchmark results dashboard](assets/benchmark-results-ui.png)
+
+## Key findings
+
+Tested with 10K, 100K, 500K and 1M records, 5 measured repetitions + 1 warm-up run per scenario.
+
+**Total execution time at 1,000,000 records** (lower is better):
+
+| Operation | MongoDB | PostgreSQL | Faster |
+|---|---:|---:|---|
+| WRITE | 29,683 ms | 38,852 ms | **MongoDB** (~1.3×) |
+| READ | 14,587 ms | 13,991 ms | PostgreSQL (~4%, near tie) |
+| UPDATE | 25,838 ms | 17,109 ms | **PostgreSQL** (~1.5×) |
+| DELETE | 16,152 ms | 2,441 ms | **PostgreSQL** (~6.6×) |
+
+- **WRITE:** MongoDB was faster at every dataset size.
+- **READ:** results were close; PostgreSQL won at 10K, 500K and 1M, MongoDB at 100K.
+- **UPDATE & DELETE:** PostgreSQL was faster at every size, with the biggest gap on DELETE.
+- **Conclusion:** neither database is "better" overall. The right choice depends on the workload: write-heavy workloads favour MongoDB, update/delete-heavy workloads favour PostgreSQL.
+
+<sub>Test machine: Intel Core i5-12450H, 16 GB RAM, NVMe SSD, Windows 11, Docker Compose (postgres:16-alpine, mongo:7). Single machine, no concurrency.</sub>
+
 ## Tech stack
 
 | Layer | Technology |
@@ -30,6 +52,8 @@ Every run is stored, so earlier results can be listed and compared again.
 | Infrastructure | Docker Compose (4 services) |
 
 ## How it works
+
+![Architecture](assets/architecture.png)
 
 1. **Dataset input:** CSV/JSON is validated (header row, flat objects, consistent fields).
 2. **Load:** the same records are loaded into a PostgreSQL table and a MongoDB collection.
