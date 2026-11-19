@@ -1,6 +1,44 @@
 # SQL vs NoSQL Benchmark Platform
 
-Local benchmark workspace for comparing PostgreSQL and MongoDB CRUD performance on the same flat CSV or JSON dataset.
+> **Bachelor of Engineering thesis project – Computer Science, Vistula University (Warsaw, 2026)**
+
+A web-based tool that compares **PostgreSQL** and **MongoDB** CRUD performance on the same dataset. Upload any flat CSV or JSON file, load it into both databases, run repeated WRITE / READ / UPDATE / DELETE tests, and compare the results side by side in tables and charts.
+
+## Why this project
+
+Choosing between a relational and a document database is a common design decision, but most comparisons use synthetic data. This platform lets you benchmark **your own dataset** under identical conditions, so the decision is based on measured numbers.
+
+## What it measures
+
+For each operation and each database, over 1–20 repetitions:
+
+| Metric | Meaning |
+|---|---|
+| Average latency (ms) | Average time per record operation |
+| Throughput (ops/sec) | Operations completed per second |
+| Min / Max time (ms) | Fastest and slowest repetition |
+
+Every run is stored, so earlier results can be listed and compared again.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Databases | PostgreSQL 16, MongoDB 7 |
+| Backend | Python, FastAPI, psycopg 3, PyMongo |
+| Frontend | Next.js, TypeScript |
+| Infrastructure | Docker Compose (4 services) |
+
+## How it works
+
+1. **Dataset input:** CSV/JSON is validated (header row, flat objects, consistent fields).
+2. **Load:** the same records are loaded into a PostgreSQL table and a MongoDB collection.
+3. **Benchmark:** each repetition runs on a fresh work table/collection, so runs don't affect each other; affected-row counts are validated after every operation.
+4. **Results:** metrics are calculated per database and saved to MongoDB; the UI shows them as a table and charts.
+
+---
+
+# Technical guide
 
 The app has four services:
 
